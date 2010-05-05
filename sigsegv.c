@@ -57,19 +57,19 @@ static void signal_segv(int signum, siginfo_t* info, void*ptr) {
 	sigsegv_outp("info.si_addr  = %p", info->si_addr);
 #ifdef SIGSEGV_STACK_ARM
 	/* sigcontext_t on ARM:
-		unsigned long trap_no;
-	        unsigned long error_code;
-        	unsigned long oldmask;
-		unsigned long arm_r0;
-	        ...
-        	unsigned long arm_r10;
-	        unsigned long arm_fp;
-        	unsigned long arm_ip;
-	        unsigned long arm_sp;
-	        unsigned long arm_lr;
-	        unsigned long arm_pc;
-	        unsigned long arm_cpsr;
-	        unsigned long fault_address;
+	unsigned long trap_no;
+        unsigned long error_code;
+        unsigned long oldmask;
+        unsigned long arm_r0;
+        ...
+        unsigned long arm_r10;
+        unsigned long arm_fp;
+        unsigned long arm_ip;
+        unsigned long arm_sp;
+        unsigned long arm_lr;
+        unsigned long arm_pc;
+        unsigned long arm_cpsr;
+        unsigned long fault_address;
 	*/
 		sigsegv_outp("reg[%02d]       = 0x" REGFORMAT,0 , ucontext->uc_mcontext.arm_r0);
 		sigsegv_outp("reg[%02d]       = 0x" REGFORMAT,1 , ucontext->uc_mcontext.arm_r1);
@@ -141,6 +141,46 @@ static void signal_segv(int signum, siginfo_t* info, void*ptr) {
 		bp = (void**)bp[0];
 	}
 #else
+	/* Should check if Stack trace is still valid after SIGSEGV. 
+	TODO: Use local stack for sighandler. sigaction recommends this as some signals (SIGILL) can corrupt the program stack, causing us to go into infinite recursion
+	<Flaky Code> */
+	sigsegv_outp("Stack trace:");
+	ip = (void*)ucontext->uc_mcontext.arm_r10;
+	bp = (void*)ucontext->uc_mcontext.arm_r10;
+	while(bp && ip){
+	  if (!dladdr(ip, &dlinfo)){
+	    sigsegv_outp("IP out of range\n");
+	    break;
+	  }
+	  const char *symname = dlinfo.dli_sname;
+	  
+#ifndef NO_CPP_DEMANGLE
+	int status;
+	char *tmp = __cxa_demangle(symname, NULL, 0, &status);
+	
+	if (status == 0 && tmp)
+	      symname = tmp;
+#endif
+	sigsegv_outp("% 2d: %p <%s+%lu> (%s)",
+				++f,
+				ip,
+				symname,
+				(unsigned long)ip - (unsigned long)dlinfo.dli_saddr,
+				dlinfo.dli_fname);
+#ifndef NO_CPP_DEMANGLE
+		if (tmp)
+			free(tmp);
+#endif
+
+		if(dlinfo.dli_sname && !strcmp(dlinfo.dli_sname, "main"))
+			break;
+
+		ip = bp[1];
+		bp = (void**)bp[0];
+	}
+	  
+	  
+	/* </End flaky code> */
 	sigsegv_outp("Stack trace (non-dedicated):");
 	char **strings;
 	void *bt[20];
