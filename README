@@ -1,0 +1,7 @@
+Useless arm tools.
+
+sigsegv.c: Traps a segfault on arm-linux, and attempts a backtrace. No need to link with the target program. Run as:
+	
+	LD_PRELOAD=libsugsegv.so ./YouArmApp
+
+	Works on arm926ej-s. Will probably work on any ARMv4/5.
